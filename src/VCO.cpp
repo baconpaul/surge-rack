@@ -639,7 +639,7 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
     SurgeStorage *storage{nullptr};
     unsigned char oscbuffer alignas(16)[oscillator_buffer_size];
 
-    Oscillator *setupOscillator()
+    Oscillator *setupOscillator(int ch)
     {
         tp[oscdata->pitch.param_id_in_scene].f = 0;
 
@@ -651,7 +651,7 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
             if (par->valtype == vt_float && module->animateDisplayFromMod)
             {
                 tp[idis].f +=
-                    module->modAssist.modvalues[i + 1][0] * (par->val_max.f - par->val_min.f);
+                    module->modAssist.modvalues[i + 1][ch] * (par->val_max.f - par->val_min.f);
             }
         }
 
@@ -660,10 +660,11 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
         return res;
     }
 
-    std::vector<std::pair<float, float>> oscPath;
+    std::array<std::vector<std::pair<float, float>>, MAX_POLY> oscPath;
     void recalcPath()
     {
-        oscPath.clear();
+        for (auto &p : oscPath)
+            p.clear();
 
         if (VCOConfig<oscType>::requiresWavetables())
         {
@@ -729,7 +730,7 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
             auto lw = w * (1.0 - skewPct);
             auto hw = h * depthPct * hCompress;
 
-            auto osc = setupOscillator();
+            auto osc = setupOscillator(0);
 
             if (!osc)
             {
@@ -778,7 +779,7 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
                     xc = xc * w * 0.61 + x0;
                     yc = yc * h * (-0.17) + (y0 + 0.5 * hw);
 
-                    oscPath.emplace_back(xc, yc);
+                    oscPath[0].emplace_back(xc, yc);
                 }
             }
 
@@ -790,38 +791,41 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
             auto xp = box.size.x;
             auto yp = box.size.y;
 
-            auto osc = setupOscillator();
-            const float ups = 1.5, invups = 1.0 / ups;
-
-            float disp_pitch_rs =
-                12.f * std::log2f((700.f * (storage->samplerate / 48000.f)) / 440.f) + 69.f;
-
-            osc->init(disp_pitch_rs, true, true);
-
-            float oscTmp alignas(16)[2][BLOCK_SIZE_OS];
-            sst::filters::HalfRate::HalfRateFilter hr(6, true);
-            hr.load_coefficients();
-            hr.reset();
-
-            int block_pos{BLOCK_SIZE + 1};
-            for (int i = 0; i < xp * ups; ++i)
+            for (int ch=0; ch<module->polyChannelCount(); ++ch)
             {
-                if (block_pos >= BLOCK_SIZE)
-                {
-                    osc->process_block(disp_pitch_rs);
-                    memcpy(oscTmp[0], osc->output, sizeof(oscTmp[0]));
-                    memcpy(oscTmp[1], osc->output, sizeof(oscTmp[1]));
-                    hr.process_block_D2(oscTmp[0], oscTmp[1], BLOCK_SIZE_OS);
+                auto osc = setupOscillator(ch);
+                const float ups = 1.5, invups = 1.0 / ups;
 
-                    block_pos = 0;
+                float disp_pitch_rs =
+                    12.f * std::log2f((700.f * (storage->samplerate / 48000.f)) / 440.f) + 69.f;
+
+                osc->init(disp_pitch_rs, true, true);
+
+                float oscTmp alignas(16)[2][BLOCK_SIZE_OS];
+                sst::filters::HalfRate::HalfRateFilter hr(6, true);
+                hr.load_coefficients();
+                hr.reset();
+
+                int block_pos{BLOCK_SIZE + 1};
+                for (int i = 0; i < xp * ups; ++i)
+                {
+                    if (block_pos >= BLOCK_SIZE)
+                    {
+                        osc->process_block(disp_pitch_rs);
+                        memcpy(oscTmp[0], osc->output, sizeof(oscTmp[0]));
+                        memcpy(oscTmp[1], osc->output, sizeof(oscTmp[1]));
+                        hr.process_block_D2(oscTmp[0], oscTmp[1], BLOCK_SIZE_OS);
+
+                        block_pos = 0;
+                    }
+
+                    float yc = (-oscTmp[0][block_pos] * 0.47 + 0.5) * yp;
+                    oscPath[ch].emplace_back(i * invups, yc);
+                    block_pos++;
                 }
 
-                float yc = (-oscTmp[0][block_pos] * 0.47 + 0.5) * yp;
-                oscPath.emplace_back(i * invups, yc);
-                block_pos++;
+                osc->~Oscillator();
             }
-
-            osc->~Oscillator();
         }
     }
 
@@ -1152,7 +1156,7 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
             nvgText(vg, box.size.x * 0.5, box.size.y * 0.5 + 3, r.c_str(), nullptr);
         }
-        else if (!oscPath.empty())
+        else if (!oscPath[0].empty())
         {
             bool is3D{false};
             if (module && VCOConfig<oscType>::requiresWavetables() && module->draw3DWavetable &&
@@ -1175,7 +1179,7 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
             if (!is3D)
             {
                 nvgBeginPath(vg);
-                for (const auto &[x, y] : oscPath)
+                for (const auto &[x, y] : oscPath[0])
                 {
                     auto uy = std::min(y * 1.0, box.size.y * 0.5);
                     if (first)
@@ -1196,7 +1200,7 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
 
                 nvgBeginPath(vg);
                 first = true;
-                for (const auto &[x, y] : oscPath)
+                for (const auto &[x, y] : oscPath[0])
                 {
                     auto uy = std::max(y * 1.0, box.size.y * 0.5);
                     if (first)
@@ -1216,30 +1220,46 @@ struct OSCPlotWidget : public rack::widget::TransparentWidget, style::StyleParti
                 nvgFill(vg);
             }
 
-            nvgBeginPath(vg);
-            first = true;
-            for (const auto &[x, y] : oscPath)
+            for (int ch = 0; ch < (is3D ? 1 : module->polyChannelCount()); ++ch)
             {
-                if (first)
+                nvgBeginPath(vg);
+                first = true;
+                for (const auto &[x, y] : oscPath[ch])
                 {
-                    nvgMoveTo(vg, x, y);
+                    if (first)
+                    {
+                        nvgMoveTo(vg, x, y);
+                    }
+                    else
+                    {
+                        nvgLineTo(vg, x, y);
+                    }
+                    first = false;
+                }
+                if (ch == 0)
+                {
+                    auto lcol = col;
+                    nvgStrokeColor(vg, lcol);
+                    nvgStrokeWidth(vg, 1.25);
+                    nvgStroke(vg);
+
+                    lcol.a = 0.1;
+                    nvgStrokeColor(vg, lcol);
+                    nvgStrokeWidth(vg, 3);
+                    nvgStroke(vg);
+                    nvgRestore(vg);
                 }
                 else
                 {
-                    nvgLineTo(vg, x, y);
+                    auto lcol = col;
+                    lcol.a = 0.3 - 0.1f * ch / 16.f;
+                    nvgStrokeColor(vg, lcol);
+                    nvgStrokeWidth(vg, 1.0);
+                    nvgStroke(vg);
+
+                    nvgRestore(vg);
                 }
-                first = false;
             }
-
-            nvgStrokeColor(vg, col);
-            nvgStrokeWidth(vg, 1.25);
-            nvgStroke(vg);
-
-            col.a = 0.1;
-            nvgStrokeColor(vg, col);
-            nvgStrokeWidth(vg, 3);
-            nvgStroke(vg);
-            nvgRestore(vg);
         }
     }
 };
