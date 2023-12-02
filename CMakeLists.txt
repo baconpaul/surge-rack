@@ -90,6 +90,7 @@ target_sources(${RACK_PLUGIN_LIB} PRIVATE
         src/DelayLineByFreq.cpp
         src/DelayLineByFreqExpanded.cpp
         src/DigitalRingMod.cpp
+        src/DualFunction.cpp
         src/EGxVCA.cpp
         src/FX.cpp
         src/LFO.cpp

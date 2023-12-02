@@ -392,6 +392,17 @@
       ]
     },
     {
+      "slug": "SurgeXTDualFunction",
+      "name": "Dual Function",
+      "description": "Dual Function Generator",
+      "tags": [
+        "Function generator",
+        "Envelope generator",
+        "LFO",
+        "Polyphonic"
+      ]
+    },
+    {
       "slug": "SurgeXTMixer",
       "name": "Mixer",
       "description": "The Surge XT Mixer",

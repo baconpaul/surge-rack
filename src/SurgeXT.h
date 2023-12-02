@@ -94,6 +94,7 @@ extern rack::Model *modelFXNimbus;
 extern rack::Model *modelEGxVCA;
 extern rack::Model *modelQuadAD;
 extern rack::Model *modelQuadLFO;
+extern rack::Model *modelDualFunction;
 
 extern rack::Model *modelUnisonHelper;
 extern rack::Model *modelUnisonHelperCVExpander;
