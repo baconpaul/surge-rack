@@ -56,6 +56,9 @@ struct DualFunction : modules::XTModule
         MODE_0,
         MODE_1,
 
+        SUBLFOMODE_0,
+        SUBLFOMODE_1,
+
         MOD_PARAM_0,
         NUM_PARAMS = MOD_PARAM_0 + n_mod_params * n_mod_inputs
     };
@@ -65,6 +68,9 @@ struct DualFunction : modules::XTModule
         TRIGGER_0,
         TRIGGER_1,
 
+        CLOCK_0,
+        CLOCK_1,
+
         MOD_INPUT_0,
         NUM_INPUTS = MOD_INPUT_0 + n_mod_inputs,
     };
@@ -73,8 +79,7 @@ struct DualFunction : modules::XTModule
     {
         OUTPUT_0,
         OUTPUT_1,
-        EOR_0,
-        EOR_1,
+
         EOC_0,
         EOC_1,
         NUM_OUTPUTS
@@ -84,6 +89,71 @@ struct DualFunction : modules::XTModule
     {
         NUM_LIGHTS
     };
+
+    enum FunctionTypes
+    {
+        ft_ADSR,
+        ft_AR,
+        ft_AHR,
+
+        numFunctionTypes
+    };
+
+    static std::string functionName(FunctionTypes ft)
+    {
+        switch (ft)
+        {
+        case ft_ADSR:
+            return "ADSR";
+        case ft_AR:
+            return "AR with Shape";
+        case ft_AHR:
+            return "AHR with Shape";
+        case numFunctionTypes:
+            return "ERROR";
+        }
+        return "ERROR";
+    }
+
+    static std::vector<std::string> allFunctionNames()
+    {
+        std::vector<std::string> res;
+        for (int i=0; i<numFunctionTypes; ++i)
+        {
+            res.push_back(functionName((FunctionTypes)i));
+        }
+
+        return res;
+    }
+
+    static bool isTriggerReallyGate(FunctionTypes ft)
+    {
+        switch(ft)
+        {
+        case ft_ADSR:
+        case ft_AHR:
+            return true;
+        default:
+            break;
+        }
+        return false;
+    }
+
+    static std::string parameterName(FunctionTypes ft, int pid)
+    {
+        using a4 = std::array<std::string, 4>;
+        switch (ft)
+        {
+        case ft_ADSR:
+            return a4{"Attack", "Decay", "Sustain", "Release"}[pid];
+        case ft_AHR:
+        case ft_AR:
+            return a4{"Attack", "A Shape", "Release", "R Shape"}[pid];
+        case numFunctionTypes:
+            return "ERROR";
+        }
+        return "ERROR";
+    }
 
     modules::ModulationAssistant<DualFunction, n_mod_params, FP_0_0, n_mod_inputs, MOD_INPUT_0>
         modAssist;
@@ -95,6 +165,13 @@ struct DualFunction : modules::XTModule
             setupSurge();
         }
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+
+        for (int i=0; i<n_funs; ++i)
+        {
+            std::string fidx = std::to_string(i);
+            configSwitch(MOD_PARAM_0 + i, 0, numFunctionTypes - 1, 0, "Mode " + fidx,
+                         allFunctionNames());
+        }
 
         for (int i = 0; i < n_mod_params * n_mod_inputs; ++i)
         {
